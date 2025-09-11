@@ -39,20 +39,31 @@ fn targetQueryForArch(arch: Arch, os: ?std.Target.Os.Tag) std.Target.Query {
 
 pub fn build(b: *std.Build) void {
     const arch = b.option(Arch, "arch", "Architectue to build the kernel for") orelse .x86_64;
-    const bootloader_query = targetQueryForArch(arch, .uefi);
+    const kernel_query = targetQueryForArch(arch, .freestanding);
 
-    const bootloader_target = b.resolveTargetQuery(bootloader_query);
+    const kernel_target = b.resolveTargetQuery(kernel_query);
     const optimize = b.standardOptimizeOption(.{});
 
-    const bootloader = b.addExecutable(.{
-        .name = "ziggy_bootloader",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/bootloader/main.zig"),
-            .target = bootloader_target,
-            .optimize = optimize,
-            .imports = &.{},
-        }),
+    const kernel_module = b.createModule(.{
+        .root_source_file = b.path("src/kernel/main.zig"),
+        .target = kernel_target,
+        .optimize = optimize,
     });
 
-    b.installArtifact(bootloader);
+    switch (arch) {
+        .x86_64 => {
+            kernel_module.red_zone = false;
+            kernel_module.code_model = .kernel;
+        },
+        .aarch64 => {},
+    }
+
+    const kernel = b.addExecutable(.{
+        .name = "ziggy_kernel",
+        .root_module = kernel_module,
+    });
+
+    kernel.setLinkerScript(b.path(b.fmt("linker-{s}.lds", .{@tagName(arch)})));
+
+    b.installArtifact(kernel);
 }

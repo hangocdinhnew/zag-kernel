@@ -1,0 +1,3 @@
+[submodule "3rd/limine-protocol"]
+	path = 3rd/limine-protocol
+	url = https://codeberg.org/Limine/limine-protocol/

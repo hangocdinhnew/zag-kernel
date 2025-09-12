@@ -81,7 +81,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const kernel = b.addExecutable(.{
-        .name = "zag_kernel",
+        .name = "zag-kernel",
         .root_module = kernel_module,
     });
 

@@ -44,16 +44,18 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const kernel_module = b.createModule(.{
-        .root_source_file = b.path("src/kernel/main.zig"),
+        .root_source_file = b.path("src/main.zig"),
         .target = kernel_target,
         .optimize = optimize,
     });
 
     const kernellib_module = b.createModule(.{
-        .root_source_file = b.path("src/kernel/root.zig"),
+        .root_source_file = b.path("src/root.zig"),
         .target = kernel_target,
         .optimize = optimize,
     });
+
+    kernellib_module.addIncludePath(b.path("3rd/limine-protocol/include"));
 
     kernel_module.addImport("klib", kernellib_module);
 

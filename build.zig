@@ -3,11 +3,13 @@ const std = @import("std");
 const Arch = enum {
     x86_64,
     aarch64,
+    riscv64,
 
     fn toStd(self: @This()) std.Target.Cpu.Arch {
         return switch (self) {
             .x86_64 => .x86_64,
             .aarch64 => .aarch64,
+            .riscv64 => .riscv64,
         };
     }
 };
@@ -23,13 +25,21 @@ fn targetQueryForArch(arch: Arch, os: ?std.Target.Os.Tag) std.Target.Query {
         .x86_64 => {
             const Target = std.Target.x86;
 
-            query.cpu_features_add = Target.featureSet(&.{ .sse, .sse2, .mmx, .x87, .cx8 });
+            query.cpu_features_add = Target.featureSet(&.{.cx8});
         },
+
         .aarch64 => {
             const Target = std.Target.aarch64;
 
             query.cpu_features_add = Target.featureSet(&.{});
-            query.cpu_features_sub = Target.featureSet(&.{ .fp_armv8, .crypto, .neon });
+            query.cpu_features_sub = Target.featureSet(&.{ .neon, .fp_armv8, .crypto });
+        },
+
+        .riscv64 => {
+            const Target = std.Target.riscv;
+
+            query.cpu_features_add = Target.featureSet(&.{});
+            query.cpu_features_sub = Target.featureSet(&.{.d});
         },
     }
 
@@ -67,7 +77,7 @@ pub fn build(b: *std.Build) void {
             kernellib_module.red_zone = false;
             kernellib_module.code_model = .kernel;
         },
-        .aarch64 => {},
+        else => {},
     }
 
     const kernel = b.addExecutable(.{

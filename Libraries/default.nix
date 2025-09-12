@@ -20,6 +20,7 @@ let
             -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
             "$@"
         '')
+        libisoburn
     ];
 
     libraryPath = pkgs.lib.makeLibraryPath runtimeDeps;

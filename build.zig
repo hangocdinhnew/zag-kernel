@@ -23,8 +23,7 @@ fn targetQueryForArch(arch: Arch, os: ?std.Target.Os.Tag) std.Target.Query {
         .x86_64 => {
             const Target = std.Target.x86;
 
-            query.cpu_features_add = Target.featureSet(&.{ .popcnt, .soft_float });
-            query.cpu_features_sub = Target.featureSet(&.{ .avx, .avx2, .sse, .sse2, .mmx });
+            query.cpu_features_add = Target.featureSet(&.{ .sse, .sse2, .mmx, .x87, .cx8 });
         },
         .aarch64 => {
             const Target = std.Target.aarch64;
@@ -50,10 +49,21 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const kernellib_module = b.createModule(.{
+        .root_source_file = b.path("src/kernel/root.zig"),
+        .target = kernel_target,
+        .optimize = optimize,
+    });
+
+    kernel_module.addImport("klib", kernellib_module);
+
     switch (arch) {
         .x86_64 => {
             kernel_module.red_zone = false;
             kernel_module.code_model = .kernel;
+
+            kernellib_module.red_zone = false;
+            kernellib_module.code_model = .kernel;
         },
         .aarch64 => {},
     }

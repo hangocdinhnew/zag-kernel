@@ -1,3 +1,5 @@
+const klib = @import("klib");
+
 export fn _start() noreturn {
-    while (true) {}
+    klib.utils.halt();
 }

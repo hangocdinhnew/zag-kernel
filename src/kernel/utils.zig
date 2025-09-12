@@ -5,7 +5,7 @@ pub fn halt() noreturn {
         switch (builtin.cpu.arch) {
             .x86_64 => asm volatile ("hlt"),
             .aarch64 => asm volatile ("wfi"),
-            _ => unreachable,
+            else => unreachable,
         }
     }
 }

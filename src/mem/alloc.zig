@@ -6,13 +6,13 @@ pub const BumpAllocator = struct {
     top: usize,
     end: usize,
 
-    pub fn init(entry_usable: ?*volatile limine.memmap_entry) @This() {
-        const entry_usable_ptr = entry_usable.?;
+    pub fn init(entry: ?*volatile limine.memmap_entry) @This() {
+        const entry_ptr = entry.?;
         var bump: @This() = undefined;
 
-        bump.base = entry_usable_ptr.base;
-        bump.top = entry_usable_ptr.base;
-        bump.end = entry_usable_ptr.base + entry_usable_ptr.length;
+        bump.base = entry_ptr.base;
+        bump.top = entry_ptr.base;
+        bump.end = entry_ptr.base + entry_ptr.length;
 
         return bump;
     }

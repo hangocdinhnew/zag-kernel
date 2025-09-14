@@ -27,5 +27,11 @@ export fn _start() noreturn {
     _ = klib.mem.Mem.init(memmap_request);
     fb.check_nopanic(klib.framebuffer.GREEN);
 
+    const bdriver = klib.bdriver.BDriver.init();
+    fb.check_nopanic(klib.framebuffer.BLUE);
+
+    var uart = bdriver.uart;
+    uart.print("Hello, World!");
+
     while (true) {}
 }

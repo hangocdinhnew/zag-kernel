@@ -65,9 +65,17 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    kernellib_module.addIncludePath(b.path("3rd/limine-protocol/include"));
+    const limine_module = b.createModule(.{
+        .root_source_file = b.path("src/limine.zig"),
+        .target = kernel_target,
+        .optimize = optimize,
+    });
+
+    limine_module.addIncludePath(b.path("3rd/limine-protocol/include"));
+    kernellib_module.addImport("limine", limine_module);
 
     kernel_module.addImport("klib", kernellib_module);
+    kernel_module.addImport("limine", limine_module);
 
     switch (arch) {
         .x86_64 => {

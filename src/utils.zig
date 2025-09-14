@@ -1,6 +1,6 @@
 const builtin = @import("builtin");
 
-pub fn halt() noreturn {
+pub fn hcf() noreturn {
     while (true) {
         switch (builtin.cpu.arch) {
             .x86_64 => asm volatile ("hlt"),

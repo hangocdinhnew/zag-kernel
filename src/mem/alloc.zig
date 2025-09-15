@@ -23,9 +23,6 @@ pub const BumpAllocator = struct {
 
         const ptr: *T = (self.top + (@"align" - 1)) & ~(@"align" - 1);
 
-        if (ptr + size > self.end)
-            root.utils.hcf();
-
         if (ptr + size > self.end) {
             return null;
         }

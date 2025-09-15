@@ -17,7 +17,7 @@ pub const UARTDriver = struct {
         return uart;
     }
 
-    pub fn putchar(self: *UARTDriver, c: u8) void {
+    pub fn putchar(self: @This(), c: u8) void {
         switch (builtin.cpu.arch) {
             .x86_64 => {
                 const port: u16 = @truncate(self.base);
@@ -43,8 +43,13 @@ pub const UARTDriver = struct {
         }
     }
 
-    pub fn print(self: *UARTDriver, str: []const u8) void {
+    pub fn print(self: @This(), str: []const u8) void {
         for (str) |c| self.putchar(c);
+    }
+
+    pub fn clear(self: @This()) void {
+        const esc = "\x1b[2J\x1b[H";
+        self.print(esc);
     }
 };
 

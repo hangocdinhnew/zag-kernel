@@ -21,17 +21,12 @@ pub export var framebuffer_request: limine.framebuffer_request linksection(".lim
 export fn _start() noreturn {
     klib.check_base_rev(base_revision);
 
-    var fb = klib.framebuffer.Framebuffer.init(framebuffer_request);
-    fb.check_nopanic(klib.framebuffer.RED);
+    const bdriver = klib.bdriver.BDriver.stage1init();
+    const logger = klib.log.Logger.init(bdriver);
+    logger.log(.Info, "Hello, World!");
 
+    _ = klib.framebuffer.Framebuffer.init(framebuffer_request, &logger);
     _ = klib.mem.Mem.init(memmap_request);
-    fb.check_nopanic(klib.framebuffer.GREEN);
-
-    const bdriver = klib.bdriver.BDriver.init();
-    fb.check_nopanic(klib.framebuffer.BLUE);
-
-    var uart = bdriver.uart;
-    uart.print("Hello, World!");
 
     while (true) {}
 }

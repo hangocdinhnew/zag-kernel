@@ -26,29 +26,32 @@ pub const Framebuffer = struct {
     fb_ptr: [*]volatile u32,
 
     ppr: usize,
+    logger: *const root.log.Logger,
 
-    pub fn init(request: limine.framebuffer_request) @This() {
+    pub fn init(request: limine.framebuffer_request, logger: *const root.log.Logger) @This() {
         var framebuffer: @This() = undefined;
 
-        if (request.response == null)
+        if (request.response == null) {
+            logger.log(.Fatal, "Framebuffer Request is Null!");
             root.utils.hcf();
+        }
 
         framebuffer.response = @ptrCast(request.response);
 
-        if (framebuffer.response.framebuffer_count < 1)
+        if (framebuffer.response.framebuffer_count < 1) {
+            logger.log(.Fatal, "No framebuffers found!");
             root.utils.hcf();
+        }
 
         framebuffer.fb = framebuffer.response.framebuffers[0];
         framebuffer.fb_ptr = @ptrCast(@alignCast(framebuffer.fb.address));
 
         framebuffer.ppr = framebuffer.fb.pitch / 4;
+        framebuffer.logger = logger;
+
+        framebuffer.logger.log(.Info, "Framebuffer initialized!");
 
         return framebuffer;
-    }
-
-    pub fn check_nopanic(self: *@This(), color: Color) void {
-        self.clear_background(color);
-        self.clear_background(BLACK);
     }
 
     pub fn write(self: *@This(), comptime T: type, x: T, y: T, color: Color) void {

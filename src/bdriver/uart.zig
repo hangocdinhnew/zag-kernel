@@ -20,7 +20,7 @@ pub const UARTDriver = struct {
     pub fn putchar(self: @This(), c: u8) void {
         switch (builtin.cpu.arch) {
             .x86_64 => {
-                const port: u16 = @truncate(self.base);
+                const port: u16 = @truncate(@intFromPtr(self.base));
                 while ((inb(port + 5) & 0x20) == 0) {}
                 outb(port, c);
             },

@@ -23,10 +23,11 @@ export fn _start() noreturn {
 
     const bdriver = klib.bdriver.BDriver.stage1init();
     const logger = klib.log.Logger.init(bdriver);
-    logger.log(.Info, "Hello, World!");
+    logger.log(.Info, "Hello, World!\n");
 
     _ = klib.framebuffer.Framebuffer.init(framebuffer_request, &logger);
-    _ = klib.mem.Mem.init(memmap_request);
+    var mem = klib.mem.Mem.init(memmap_request, &logger);
+    _ = mem.malloc(.Bump, i64);
 
     while (true) {}
 }

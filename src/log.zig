@@ -5,6 +5,7 @@ pub const LogLevel = enum {
     Warn,
     Error,
     Fatal,
+    Debug,
 };
 
 pub const Logger = struct {
@@ -28,9 +29,10 @@ pub const Logger = struct {
             .Warn => "[WARN] ",
             .Error => "[ERROR] ",
             .Fatal => "[FATAL] ",
+            .Debug => "[DEBUG] ",
         };
+
         self.uart.print(prefix);
         self.uart.print(msg);
-        self.uart.print("\n");
     }
 };

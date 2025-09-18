@@ -2,15 +2,21 @@ const root = @import("root").klib;
 const limine = @import("limine");
 
 pub const Memmap = struct {
+    logger: *const root.log.Logger,
+
     response: *volatile limine.memmap_response,
     entry_usable: *volatile limine.memmap_entry,
     entry_kernelspace: *volatile limine.memmap_entry,
 
-    pub fn init(request: limine.memmap_request) @This() {
+    pub fn init(request: limine.memmap_request, logger: *const root.log.Logger) @This() {
         var memmap: @This() = undefined;
 
-        if (request.response == null)
+        memmap.logger = logger;
+
+        if (request.response == null) {
+            memmap.logger.log(.Fatal, "Failed to get memmap response!\n");
             unreachable;
+        }
 
         memmap.response = @ptrCast(request.response);
 
@@ -31,14 +37,20 @@ pub const Memmap = struct {
             }
         }
 
-        if (!has_usable or !has_kernelspace)
+        if (!has_usable or !has_kernelspace) {
+            memmap.logger.log(.Fatal, "Failed to get usable or kernel space memory address!\n");
             unreachable;
+        }
 
-        if (memmap.entry_usable.base == 0 or memmap.entry_usable.length == 0)
+        if (memmap.entry_usable.base == 0 or memmap.entry_usable.length == 0) {
+            memmap.logger.log(.Fatal, "Unusable entry_usable!\n");
             unreachable;
+        }
 
-        if (memmap.entry_kernelspace.base == 0 or memmap.entry_kernelspace.length == 0)
+        if (memmap.entry_kernelspace.base == 0 or memmap.entry_kernelspace.length == 0) {
+            memmap.logger.log(.Fatal, "Unusable entry_kernelspace!\n");
             unreachable;
+        }
 
         for (0..memmap.response.entry_count) |i| {
             const zig_entry: *volatile limine.memmap_entry = @ptrCast(memmap.response.entries[i]);
@@ -55,6 +67,8 @@ pub const Memmap = struct {
                 zig_entry.length = 0;
             }
         }
+
+        memmap.logger.log(.Info, "Memory is mapped!\n");
 
         return memmap;
     }

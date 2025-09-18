@@ -5,29 +5,35 @@ pub const BumpAllocator = struct {
     base: usize,
     top: usize,
     end: usize,
+    logger: *const root.log.Logger,
 
-    pub fn init(entry: ?*volatile limine.memmap_entry) @This() {
+    pub fn init(entry: ?*volatile limine.memmap_entry, logger: *const root.log.Logger) @This() {
         const entry_ptr = entry.?;
         var bump: @This() = undefined;
 
         bump.base = entry_ptr.base;
         bump.top = entry_ptr.base;
         bump.end = entry_ptr.base + entry_ptr.length;
+        bump.logger = logger;
+
+        bump.logger.log(.Info, "Bump allocator initialized!\n");
 
         return bump;
     }
 
     pub fn alloc(self: *@This(), comptime T: type) ?*T {
-        const size = @sizeOf(T);
-        const @"align" = @alignOf(T);
+        self.logger.log(.Debug, "Bump allocator called!");
 
-        const ptr: *T = (self.top + (@"align" - 1)) & ~(@"align" - 1);
+        const size: usize = @sizeOf(T);
+        const @"align": usize = @alignOf(T);
 
-        if (ptr + size > self.end) {
+        const ptr: *T = @ptrFromInt(@as(u64, self.top + (@"align" - 1)) & ~(@"align" - 1));
+
+        if (@intFromPtr(ptr) + size > self.end) {
             return null;
         }
 
-        self.top = ptr + size;
+        self.top = @intFromPtr(ptr) + size;
 
         return ptr;
     }

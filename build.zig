@@ -25,6 +25,7 @@ fn targetQueryForArch(arch: Arch, os: ?std.Target.Os.Tag) std.Target.Query {
         .x86_64 => {
             const Target = std.Target.x86;
 
+            query.cpu_features_sub = Target.featureSet(&.{ .avx, .avx2 });
             query.cpu_features_add = Target.featureSet(&.{.cx8});
         },
 

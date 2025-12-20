@@ -21,6 +21,8 @@ pub export var framebuffer_request: limine.framebuffer_request linksection(".lim
 export fn _start() noreturn {
     klib.check_base_rev(base_revision);
 
+    klib.enable_sse();
+
     klib.bdriver.BDriver.stage1init();
     klib.log.log(.Info, "Hello, World!\n", .{});
 

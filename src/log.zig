@@ -1,4 +1,5 @@
 const root = @import("root").klib;
+const uart = root.bdriver.uart.UARTDriver;
 
 pub const LogLevel = enum {
     Info,
@@ -8,31 +9,17 @@ pub const LogLevel = enum {
     Debug,
 };
 
-pub const Logger = struct {
-    bdriver: root.bdriver.BDriver,
-    uart: root.bdriver.uart.UARTDriver,
+pub fn log(level: LogLevel, comptime msg: []const u8, args: anytype) void {
+    const prefix: []const u8 = switch (level) {
+        .Info => "[INFO]",
+        .Warn => "[WARN]",
+        .Error => "[ERROR]",
+        .Fatal => "[FATAL]",
+        .Debug => "[DEBUG]",
+    };
 
-    pub fn init(bdriver: ?root.bdriver.BDriver) @This() {
-        var logger: @This() = undefined;
+    const _writer = uart.writer();
+    var writer = @constCast(&_writer.interface);
 
-        const bdriver_extracted = bdriver.?;
-
-        logger.bdriver = bdriver_extracted;
-        logger.uart = logger.bdriver.uart;
-
-        return logger;
-    }
-
-    pub fn log(self: @This(), level: LogLevel, msg: []const u8) void {
-        const prefix: []const u8 = switch (level) {
-            .Info => "[INFO] ",
-            .Warn => "[WARN] ",
-            .Error => "[ERROR] ",
-            .Fatal => "[FATAL] ",
-            .Debug => "[DEBUG] ",
-        };
-
-        self.uart.print(prefix);
-        self.uart.print(msg);
-    }
-};
+    writer.print("{s} {s}\n", .{ prefix, msg } ++ args) catch unreachable;
+}

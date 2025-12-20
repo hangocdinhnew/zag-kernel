@@ -30,5 +30,5 @@ export fn _start() noreturn {
     var mem = klib.mem.Mem.init(memmap_request);
     _ = mem.malloc(.Bump, i64);
 
-    while (true) {}
+    klib.utils.hcf();
 }

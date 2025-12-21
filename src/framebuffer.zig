@@ -33,14 +33,14 @@ pub const Framebuffer = struct {
         var framebuffer: @This() = undefined;
 
         if (request.response == null) {
-            log.log(.Fatal, "Framebuffer Request is Null!\n", .{});
+            log.log(.Fatal, "Framebuffer Request is Null!", .{});
             root.utils.hcf();
         }
 
         framebuffer.response = @ptrCast(request.response);
 
         if (framebuffer.response.framebuffer_count < 1) {
-            log.log(.Fatal, "No framebuffers found!\n", .{});
+            log.log(.Fatal, "No framebuffers found!", .{});
             root.utils.hcf();
         }
 
@@ -49,7 +49,7 @@ pub const Framebuffer = struct {
 
         framebuffer.ppr = framebuffer.fb.pitch / 4;
 
-        log.log(.Info, "Framebuffer initialized!\n", .{});
+        log.log(.Info, "Framebuffer initialized!", .{});
 
         return framebuffer;
     }

@@ -49,9 +49,7 @@ pub const UARTDriver = struct {
 
     pub fn init() void {
         switch (builtin.cpu.arch) {
-            .x86_64 => @This().base = @ptrFromInt(0x3F8), // Works across platforms
-            .aarch64 => @This().base = @ptrFromInt(0x0900_0000), // TODO: Use ARM's DTC.
-            .riscv64 => @This().base = @ptrFromInt(0x1000_0000), // TODO: Use RISCV's FDT
+            .x86_64 => @This().base = @ptrFromInt(0x3F8),
             else => unreachable,
         }
     }
@@ -62,20 +60,6 @@ pub const UARTDriver = struct {
                 const port: u16 = @truncate(@intFromPtr(@This().base));
                 while ((inb(port + 5) & 0x20) == 0) {}
                 outb(port, c);
-            },
-
-            .aarch64 => {
-                const dr: *volatile u32 = @ptrCast(@alignCast(@This().base));
-                const fr: *volatile u32 = @ptrFromInt(@intFromPtr(@This().base) + 0x18);
-                while ((fr.* & (1 << 5)) != 0) {}
-                dr.* = c;
-            },
-
-            .riscv64 => {
-                const thr: *volatile u8 = @ptrCast(@alignCast(@This().base));
-                const lsr: *volatile u8 = @ptrFromInt(@intFromPtr(@This().base) + 0x05);
-                while ((lsr.* & 0x20) == 0) {}
-                thr.* = c;
             },
 
             else => unreachable,
@@ -92,7 +76,7 @@ pub const UARTDriver = struct {
     }
 };
 
-fn outb(port: u16, value: u8) void {
+inline fn outb(port: u16, value: u8) void {
     asm volatile ("outb %al, %dx"
         :
         : [val] "{al}" (value),
@@ -100,7 +84,7 @@ fn outb(port: u16, value: u8) void {
         : .{});
 }
 
-fn inb(port: u16) u8 {
+inline fn inb(port: u16) u8 {
     var ret: u8 = 0;
     asm volatile ("inb %dx, %al"
         : [ret] "={al}" (ret),

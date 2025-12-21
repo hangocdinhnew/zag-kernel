@@ -1,4 +1,5 @@
 pub const klib = @import("klib");
+pub const builtin = @import("builtin");
 const limine = @import("limine");
 
 const LIMINE_MAGIC1 = 0xc7b1dd30df4c8b88;
@@ -21,14 +22,13 @@ pub export var framebuffer_request: limine.framebuffer_request linksection(".lim
 export fn _start() noreturn {
     klib.check_base_rev(base_revision);
 
-    klib.enable_sse();
+    if (builtin.cpu.has(.x86, .sse)) klib.enable_sse();
+    if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
 
     klib.bdriver.BDriver.stage1init();
-    klib.log.log(.Info, "Hello, World!\n", .{});
+    klib.log.log(.Info, "Hello, World!", .{});
 
     _ = klib.framebuffer.Framebuffer.init(framebuffer_request);
-    var mem = klib.mem.Mem.init(memmap_request);
-    _ = mem.malloc(.Bump, i64);
 
     klib.utils.hcf();
 }

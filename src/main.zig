@@ -1,6 +1,25 @@
 pub const klib = @import("klib");
 pub const builtin = @import("builtin");
+pub const std = @import("std");
 const limine = @import("limine");
+
+pub const std_options: std.Options = .{
+    .log_level = .info,
+    .logFn = klogfn,
+};
+
+pub fn klogfn(
+    comptime level: std.log.Level,
+    comptime _: @Type(.enum_literal),
+    comptime fmt: []const u8,
+    args: anytype,
+) void {
+    if (@intFromEnum(level) >= @intFromEnum(std.log.Level.debug)) return;
+
+    const prefix = "[" ++ comptime level.asText() ++ "]" ++ ": ";
+
+    klib.kprint(prefix ++ fmt ++ "\n", args);
+}
 
 const LIMINE_MAGIC1 = 0xc7b1dd30df4c8b88;
 const LIMINE_MAGIC2 = 0x0a82e883a194f07b;
@@ -25,8 +44,7 @@ export fn _start() noreturn {
     if (builtin.cpu.has(.x86, .sse)) klib.enable_sse();
     if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
 
-    klib.bdriver.BDriver.stage1init();
-    klib.log.log(.Info, "Hello, World!", .{});
+    std.log.info("Hello, World!", .{});
 
     _ = klib.framebuffer.Framebuffer.init(framebuffer_request);
 

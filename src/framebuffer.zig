@@ -1,7 +1,7 @@
+const std = @import("std");
+
 const root = @import("root").klib;
 const limine = @import("limine");
-
-const log = root.log;
 
 pub const Color = struct {
     r: u8,
@@ -33,14 +33,14 @@ pub const Framebuffer = struct {
         var framebuffer: @This() = undefined;
 
         if (request.response == null) {
-            log.log(.Fatal, "Framebuffer Request is Null!", .{});
+            std.log.err("Framebuffer Request is Null!", .{});
             root.utils.hcf();
         }
 
         framebuffer.response = @ptrCast(request.response);
 
         if (framebuffer.response.framebuffer_count < 1) {
-            log.log(.Fatal, "No framebuffers found!", .{});
+            std.log.err("No framebuffers found!", .{});
             root.utils.hcf();
         }
 
@@ -49,7 +49,7 @@ pub const Framebuffer = struct {
 
         framebuffer.ppr = framebuffer.fb.pitch / 4;
 
-        log.log(.Info, "Framebuffer initialized!", .{});
+        std.log.info("Framebuffer initialized!", .{});
 
         return framebuffer;
     }

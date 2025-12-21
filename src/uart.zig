@@ -2,8 +2,43 @@ const root = @import("root").klib;
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const UARTDriver = struct {
-    pub var base: *anyopaque = undefined;
+pub const Spinlock = struct {
+    locked: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+
+    pub fn lock(self: *@This()) void {
+        while (true) : (std.atomic.spinLoopHint()) {
+            if (self.locked.cmpxchgWeak(0, 1, .acquire, .monotonic) == null) break;
+        }
+    }
+
+    pub fn unlock(self: *@This()) void {
+        self.locked.store(0, .release);
+    }
+};
+
+var uart_mutex: Spinlock = .{};
+var uart__writer = UART.writer();
+var uart_writer = &uart__writer.interface;
+
+fn lockUartWriter() *std.Io.Writer {
+    uart_mutex.lock();
+    return uart_writer;
+}
+
+fn unlockUartWriter() void {
+    uart_writer.end = 0;
+    uart_mutex.unlock();
+}
+
+pub inline fn kprint(comptime fmt: []const u8, args: anytype) void {
+    const bw = lockUartWriter();
+    defer unlockUartWriter();
+
+    nosuspend bw.print(fmt, args) catch return;
+}
+
+pub const UART = struct {
+    pub const base: *anyopaque = @ptrFromInt(0x3F8);
 
     pub const Writer = struct {
         interface: std.Io.Writer,
@@ -37,7 +72,7 @@ pub const UARTDriver = struct {
                 const pattern = data[data.len - 1];
                 for (0..splat) |_| {
                     for (pattern) |b| {
-                        UARTDriver.putc(b);
+                        UART.putc(b);
                         written += 1;
                     }
                 }
@@ -47,28 +82,10 @@ pub const UARTDriver = struct {
         }
     };
 
-    pub fn init() void {
-        switch (builtin.cpu.arch) {
-            .x86_64 => @This().base = @ptrFromInt(0x3F8),
-            else => unreachable,
-        }
-    }
-
     pub fn putc(c: u8) void {
-        switch (builtin.cpu.arch) {
-            .x86_64 => {
-                const port: u16 = @truncate(@intFromPtr(@This().base));
-                while ((inb(port + 5) & 0x20) == 0) {}
-                outb(port, c);
-            },
-
-            else => unreachable,
-        }
-    }
-
-    pub fn clear() void {
-        const esc = "\x1b[2J\x1b[H";
-        @This().print(esc);
+        const port: u16 = @truncate(@intFromPtr(@This().base));
+        while ((inb(port + 5) & 0x20) == 0) {}
+        outb(port, c);
     }
 
     pub fn writer() Writer {

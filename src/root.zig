@@ -4,6 +4,9 @@ pub const utils = @import("utils.zig");
 pub const framebuffer = @import("framebuffer.zig");
 pub const uart = @import("uart.zig");
 
+pub const UART = uart.UART;
+pub const UARTSpeed = uart.Speed;
+
 pub const kprint = uart.kprint;
 
 pub inline fn check_base_rev(base_rev: [3]u64) void {

@@ -1,6 +1,10 @@
+// Inspired by: https://raw.githubusercontent.com/os-chain/chain/refs/heads/master/kernel/src/uart.zig
+
 const root = @import("root").klib;
 const builtin = @import("builtin");
 const std = @import("std");
+
+const cpu = @import("arch/x86_64/cpu.zig");
 
 pub const Spinlock = struct {
     locked: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
@@ -36,6 +40,34 @@ pub inline fn kprint(comptime fmt: []const u8, args: anytype) void {
 
     nosuspend bw.print(fmt, args) catch return;
 }
+
+pub const Speed = enum(usize) {
+    pub const base = 115200;
+
+    s115200 = 115200,
+    s57600 = 57600,
+    s38400 = 38400,
+    s19200 = 19200,
+    s9600 = 9600,
+    s4800 = 4800,
+
+    pub fn getBaudrate(self: Speed) usize {
+        return @intFromEnum(self);
+    }
+
+    pub fn fromBaudrate(baudrate: usize) ?Speed {
+        inline for (comptime std.enums.values(Speed)) |speed| {
+            if (baudrate == speed.getBaudrate()) {
+                return speed;
+            }
+        }
+        return null;
+    }
+
+    pub fn getDivisor(self: Speed) u16 {
+        return @intCast(@divExact(base, self.getBaudrate()));
+    }
+};
 
 pub const UART = struct {
     pub const base: *anyopaque = @ptrFromInt(0x3F8);
@@ -82,30 +114,28 @@ pub const UART = struct {
         }
     };
 
+    pub fn init(speed: Speed) void {
+        const port: u16 = @truncate(@intFromPtr(@This().base));
+
+        cpu.outb(port + 3, 0x80);
+        cpu.outb(port, @intCast(speed.getDivisor() >> 8));
+        cpu.outb(port, @truncate(speed.getDivisor()));
+        cpu.outb(port + 3, 0x0);
+
+        cpu.outb(port + 3, 0x03); // 8 bits, no parity, 1 stop bit, no break control
+
+        cpu.outb(port + 2, 0xc7); // FIFO enabled, clear both FIFOs, 14 bytes
+
+        cpu.outb(port + 4, 0x03); // RTS, DTS
+    }
+
     pub fn putc(c: u8) void {
         const port: u16 = @truncate(@intFromPtr(@This().base));
-        while ((inb(port + 5) & 0x20) == 0) {}
-        outb(port, c);
+        while ((cpu.inb(port + 5) & 0x20) == 0) {}
+        cpu.outb(port, c);
     }
 
     pub fn writer() Writer {
         return .init();
     }
 };
-
-inline fn outb(port: u16, value: u8) void {
-    asm volatile ("outb %al, %dx"
-        :
-        : [val] "{al}" (value),
-          [port] "{dx}" (port),
-        : .{});
-}
-
-inline fn inb(port: u16) u8 {
-    var ret: u8 = 0;
-    asm volatile ("inb %dx, %al"
-        : [ret] "={al}" (ret),
-        : [port] "{dx}" (port),
-        : .{});
-    return ret;
-}

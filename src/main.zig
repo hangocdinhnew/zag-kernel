@@ -4,7 +4,10 @@ pub const std = @import("std");
 const limine = @import("limine");
 
 pub const std_options: std.Options = .{
-    .log_level = .info,
+    .log_level = switch (builtin.mode) {
+        .Debug => .debug,
+        else => .info,
+    },
     .logFn = klogfn,
 };
 
@@ -16,9 +19,15 @@ pub fn klogfn(
 ) void {
     if (@intFromEnum(level) >= @intFromEnum(std.log.Level.debug)) return;
 
-    const prefix = "[" ++ comptime level.asText() ++ "]" ++ ": ";
+    const prefix = "[" ++ comptime level.asText() ++ "]: ";
 
     klib.kprint(prefix ++ fmt ++ "\n", args);
+}
+
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+    std.log.err("PANIC! Error message:\n{s}", .{msg});
+
+    klib.utils.hcf();
 }
 
 const LIMINE_MAGIC1 = 0xc7b1dd30df4c8b88;
@@ -44,9 +53,11 @@ export fn _start() noreturn {
     if (builtin.cpu.has(.x86, .sse)) klib.enable_sse();
     if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
 
+    klib.UART.init(klib.UARTSpeed.fromBaudrate(9600).?);
+
     std.log.info("Hello, World!", .{});
 
     _ = klib.framebuffer.Framebuffer.init(framebuffer_request);
 
-    klib.utils.hcf();
+    @panic("Test");
 }

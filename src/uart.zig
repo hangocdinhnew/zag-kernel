@@ -4,25 +4,13 @@ const root = @import("root").klib;
 const builtin = @import("builtin");
 const std = @import("std");
 
-const cpu = @import("arch/x86_64/cpu.zig");
+const smp = root.smp;
 
-pub const Spinlock = struct {
-    locked: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
-
-    pub fn lock(self: *@This()) void {
-        while (true) : (std.atomic.spinLoopHint()) {
-            if (self.locked.cmpxchgWeak(0, 1, .acquire, .monotonic) == null) break;
-        }
-    }
-
-    pub fn unlock(self: *@This()) void {
-        self.locked.store(0, .release);
-    }
-};
-
-var uart_mutex: Spinlock = .{};
-var uart__writer = UART.writer();
+var uart_mutex: smp.Spinlock = .{};
+var uart__writer = writer();
 var uart_writer = &uart__writer.interface;
+
+pub var base: usize = 0x0;
 
 fn lockUartWriter() *std.Io.Writer {
     uart_mutex.lock();
@@ -65,77 +53,92 @@ pub const Speed = enum(usize) {
     }
 
     pub fn getDivisor(self: Speed) u16 {
-        return @intCast(@divExact(base, self.getBaudrate()));
+        return @intCast(@divExact(@This().base, self.getBaudrate()));
     }
 };
 
-pub const UART = struct {
-    pub const base: *anyopaque = @ptrFromInt(0x3F8);
+pub const Writer = struct {
+    interface: std.Io.Writer,
 
-    pub const Writer = struct {
-        interface: std.Io.Writer,
+    pub fn init() Writer {
+        return .{ .interface = .{
+            .vtable = &.{
+                .drain = drain,
+            },
+            .buffer = &.{},
+        } };
+    }
 
-        pub fn init() Writer {
-            return .{ .interface = .{
-                .vtable = &.{
-                    .drain = drain,
-                },
-                .buffer = &.{},
-            } };
+    fn drain(
+        io_w: *std.io.Writer,
+        data: []const []const u8,
+        splat: usize,
+    ) std.io.Writer.Error!usize {
+        _ = io_w;
+
+        var written: usize = 0;
+
+        for (data[0 .. data.len - 1]) |slice| {
+            for (slice) |b| {
+                putc(b);
+                written += 1;
+            }
         }
 
-        fn drain(
-            io_w: *std.io.Writer,
-            data: []const []const u8,
-            splat: usize,
-        ) std.io.Writer.Error!usize {
-            _ = io_w;
-
-            var written: usize = 0;
-
-            for (data[0 .. data.len - 1]) |slice| {
-                for (slice) |b| {
+        if (splat != 0) {
+            const pattern = data[data.len - 1];
+            for (0..splat) |_| {
+                for (pattern) |b| {
                     putc(b);
                     written += 1;
                 }
             }
-
-            if (splat != 0) {
-                const pattern = data[data.len - 1];
-                for (0..splat) |_| {
-                    for (pattern) |b| {
-                        UART.putc(b);
-                        written += 1;
-                    }
-                }
-            }
-
-            return written;
         }
-    };
 
-    pub fn init(speed: Speed) void {
-        const port: u16 = @truncate(@intFromPtr(@This().base));
-
-        cpu.outb(port + 3, 0x80);
-        cpu.outb(port, @intCast(speed.getDivisor() >> 8));
-        cpu.outb(port, @truncate(speed.getDivisor()));
-        cpu.outb(port + 3, 0x0);
-
-        cpu.outb(port + 3, 0x03); // 8 bits, no parity, 1 stop bit, no break control
-
-        cpu.outb(port + 2, 0xc7); // FIFO enabled, clear both FIFOs, 14 bytes
-
-        cpu.outb(port + 4, 0x03); // RTS, DTS
-    }
-
-    pub fn putc(c: u8) void {
-        const port: u16 = @truncate(@intFromPtr(@This().base));
-        while ((cpu.inb(port + 5) & 0x20) == 0) {}
-        cpu.outb(port, c);
-    }
-
-    pub fn writer() Writer {
-        return .init();
+        return written;
     }
 };
+
+pub fn init(speed: Speed) void {
+    switch (builtin.cpu.arch) {
+        .x86_64 => {
+            const cpu = @import("arch/x86_64/cpu.zig");
+
+            base = 0x3F8;
+
+            const port: u16 = @intCast(base);
+
+            cpu.outb(port + 3, 0x80);
+            cpu.outb(port, @intCast(speed.getDivisor() >> 8));
+            cpu.outb(port, @truncate(speed.getDivisor()));
+            cpu.outb(port + 3, 0x0);
+
+            cpu.outb(port + 3, 0x03); // 8 bits, no parity, 1 stop bit, no break control
+
+            cpu.outb(port + 2, 0xc7); // FIFO enabled, clear both FIFOs, 14 bytes
+
+            cpu.outb(port + 4, 0x03); // RTS, DTS
+        },
+
+        else => @compileError("Unsupported architecture!"),
+    }
+}
+
+pub fn putc(c: u8) void {
+    switch (builtin.cpu.arch) {
+        .x86_64 => {
+            const cpu = @import("arch/x86_64/cpu.zig");
+
+            const port: u16 = @intCast(base);
+
+            while ((cpu.inb(port + 5) & 0x20) == 0) {}
+            cpu.outb(port, c);
+        },
+
+        else => @compileError("Unsupported architecture!"),
+    }
+}
+
+pub fn writer() Writer {
+    return .init();
+}

@@ -1,10 +1,10 @@
 pub const std = @import("std");
 
 pub const utils = @import("utils.zig");
-pub const framebuffer = @import("framebuffer.zig");
 pub const uart = @import("uart.zig");
 
-pub const UART = uart.UART;
+pub const smp = @import("smp.zig");
+
 pub const UARTSpeed = uart.Speed;
 
 pub const kprint = uart.kprint;

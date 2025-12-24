@@ -24,8 +24,14 @@ pub fn klogfn(
     klib.kprint(prefix ++ fmt ++ "\n", args);
 }
 
-pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
-    std.log.err("PANIC! Error message:\n{s}", .{msg});
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    @branchHint(.cold);
+
+    std.log.err(
+        \\PANIC! Error message:
+        \\{s}
+        \\Return address: {x}
+    , .{ msg, ret_addr orelse @returnAddress() });
 
     klib.utils.hcf();
 }
@@ -50,14 +56,14 @@ pub export var framebuffer_request: limine.framebuffer_request linksection(".lim
 export fn _start() noreturn {
     klib.check_base_rev(base_revision);
 
-    if (builtin.cpu.has(.x86, .sse)) klib.enable_sse();
-    if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
+    if (builtin.cpu.arch == .x86_64) {
+        klib.enable_sse();
+        if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
+    }
 
-    klib.UART.init(klib.UARTSpeed.fromBaudrate(9600).?);
+    klib.uart.init(klib.UARTSpeed.fromBaudrate(9600).?);
 
     std.log.info("Hello, World!", .{});
 
-    _ = klib.framebuffer.Framebuffer.init(framebuffer_request);
-
-    @panic("Test");
+    klib.utils.hcf();
 }

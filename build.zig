@@ -1,8 +1,18 @@
 const std = @import("std");
 
-fn targetQuery(os: ?std.Target.Os.Tag) std.Target.Query {
+const ZagArch = enum {
+    x86_64,
+
+    fn toStd(self: @This()) std.Target.Cpu.Arch {
+        return switch (self) {
+            .x86_64 => .x86_64,
+        };
+    }
+};
+
+fn targetQuery(arch: ?std.Target.Cpu.Arch, os: ?std.Target.Os.Tag) std.Target.Query {
     const query: std.Target.Query = .{
-        .cpu_arch = .x86_64,
+        .cpu_arch = arch,
         .os_tag = os,
         .abi = .none,
     };
@@ -11,7 +21,9 @@ fn targetQuery(os: ?std.Target.Os.Tag) std.Target.Query {
 }
 
 pub fn build(b: *std.Build) void {
-    const kernel_query = targetQuery(.freestanding);
+    const arch = b.option(ZagArch, "arch", "The target architecture of Zag") orelse .x86_64;
+
+    const kernel_query = targetQuery(arch.toStd(), .freestanding);
 
     const kernel_target = b.resolveTargetQuery(kernel_query);
     const optimize = b.standardOptimizeOption(.{});
@@ -40,18 +52,18 @@ pub fn build(b: *std.Build) void {
     kernel_module.addImport("klib", kernellib_module);
     kernel_module.addImport("limine", limine_module);
 
-    kernel_module.red_zone = false;
-    kernel_module.code_model = .kernel;
-
-    kernellib_module.red_zone = false;
-    kernellib_module.code_model = .kernel;
+    if (arch == .x86_64) {
+        kernel_module.code_model = .kernel;
+    } else {
+        kernel_module.code_model = .default;
+    }
 
     const kernel = b.addExecutable(.{
         .name = "zag-kernel",
         .root_module = kernel_module,
     });
 
-    kernel.setLinkerScript(b.path("linker.lds"));
+    kernel.setLinkerScript(b.path(b.fmt("linker-{s}.lds", .{@tagName(arch)})));
 
     b.installArtifact(kernel);
 }

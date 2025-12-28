@@ -2,11 +2,10 @@ pub const std = @import("std");
 
 pub const utils = @import("utils.zig");
 pub const uart = @import("uart.zig");
-
+pub const mem = @import("mem.zig");
 pub const smp = @import("smp.zig");
 
 pub const UARTSpeed = uart.Speed;
-
 pub const kprint = uart.kprint;
 
 pub inline fn check_base_rev(base_rev: [3]u64) void {

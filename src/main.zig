@@ -65,5 +65,41 @@ export fn _start() noreturn {
 
     std.log.info("Hello, World!", .{});
 
+    if (memmap_request.response == null) {
+        @panic("Failed to get memory map!");
+    }
+
+    var usable_base: u64 = 0;
+    var usable_length: u64 = 0;
+
+    const response = memmap_request.response;
+    for (0..response.*.entry_count) |i| {
+        const entry = response.*.entries[i];
+
+        if (entry.*.type == limine.MEMMAP_USABLE) {
+            usable_base = entry.*.base;
+            usable_length = entry.*.length;
+        }
+    }
+
+    if (usable_base == 0 or usable_length == 0) @panic("Failed to find usable memory!");
+    var frame_alloc = klib.mem.FrameAllocator.init();
+    const interface = &frame_alloc;
+
+    interface.setbootinfo(usable_base, usable_length);
+
+    const test_va = klib.mem.VirtualAddress.from(0xffff_8000_0000_0000);
+    const test_frame = interface.alloc(0) orelse @panic("OOM allocating test frame");
+
+    klib.mem.kmap(test_va, test_frame, .{}, interface);
+
+    const lmao: *u8 = @ptrFromInt(test_va.to());
+
+    std.log.info("I SURVIVED!", .{});
+
+    lmao.* = 'c';
+
+    std.log.info("NO WAY: {c}", .{lmao.*});
+
     klib.utils.hcf();
 }

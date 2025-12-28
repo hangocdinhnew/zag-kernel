@@ -1,4 +1,7 @@
 const std = @import("std");
+const root = @import("root").klib;
+
+const smp = root.smp;
 
 pub const PMO: usize = 0xFFFF_8000_0000_0000;
 
@@ -96,6 +99,7 @@ inline fn largestOrderThatFits(addr: usize, end: usize) usize {
 
 pub const FrameAllocator = struct {
     free_lists: [MAX_ORDER + 1]?*FreeBlock,
+    spin_lock: smp.Spinlock = .{},
 
     pub fn init() @This() {
         return .{
@@ -115,6 +119,9 @@ pub const FrameAllocator = struct {
     }
 
     pub fn alloc(self: *@This(), order: usize) ?PhysFrame {
+        self.spin_lock.lock();
+        defer self.spin_lock.unlock();
+
         var o = order;
 
         while (o <= MAX_ORDER and self.free_lists[o] == null) {
@@ -145,6 +152,9 @@ pub const FrameAllocator = struct {
         addr: PhysFrame,
         order: usize,
     ) void {
+        self.spin_lock.lock();
+        defer self.spin_lock.unlock();
+
         std.debug.assert(order <= MAX_ORDER);
         std.debug.assert(addr.to() % bytes(order) == 0);
 

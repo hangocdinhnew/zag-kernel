@@ -65,6 +65,8 @@ export fn _start() noreturn {
 
     std.log.info("Hello, World!", .{});
 
+    klib.gdt.load();
+
     if (memmap_request.response == null) {
         @panic("Failed to get memory map!");
     }

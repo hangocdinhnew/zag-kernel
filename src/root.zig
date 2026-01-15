@@ -5,6 +5,7 @@ pub const uart = @import("uart.zig");
 pub const mem = @import("mem.zig");
 pub const smp = @import("smp.zig");
 pub const gdt = @import("gdt.zig");
+pub const idt = @import("idt.zig");
 
 pub const UARTSpeed = uart.Speed;
 pub const kprint = uart.kprint;

@@ -24,14 +24,13 @@ pub fn klogfn(
     klib.kprint(prefix ++ fmt ++ "\n", args);
 }
 
-pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     @branchHint(.cold);
 
     std.log.err(
         \\PANIC! Error message:
         \\{s}
-        \\Return address: {x}
-    , .{ msg, ret_addr orelse @returnAddress() });
+    , .{msg});
 
     klib.utils.hcf();
 }
@@ -65,7 +64,8 @@ export fn _start() noreturn {
 
     std.log.info("Hello, World!", .{});
 
-    klib.gdt.load();
+    klib.gdt.init();
+    klib.idt.init();
 
     if (memmap_request.response == null) {
         @panic("Failed to get memory map!");
@@ -102,6 +102,9 @@ export fn _start() noreturn {
     lmao.* = 'c';
 
     std.log.info("NO WAY: {c}", .{lmao.*});
+
+    const ptr: *volatile u64 = @ptrFromInt(0xffff_8000_0000_0000);
+    ptr.* = 'a';
 
     klib.utils.hcf();
 }

@@ -54,6 +54,7 @@ pub fn build(b: *std.Build) void {
 
     if (arch == .x86_64) {
         kernel_module.code_model = .kernel;
+        kernel_module.red_zone = false;
     } else {
         kernel_module.code_model = .default;
     }

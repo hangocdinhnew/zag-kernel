@@ -40,10 +40,15 @@ const LIMINE_MAGIC2 = 0x0a82e883a194f07b;
 
 pub export var start_marker: [4]u64 linksection(".limine_requests_start") = [4]u64{ 0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf, 0x785c6ed015d3e316, 0x181e920a7852b9d9 };
 pub export var end_marker: [2]u64 linksection(".limine_requests_end") = [2]u64{ 0xadc0e0531bb10d03, 0x9572709f31764c62 };
-pub export var base_revision: [3]u64 linksection(".limine_requests") = [3]u64{ 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 3 };
+pub export var base_revision: [3]u64 linksection(".limine_requests") = [3]u64{ 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 4 };
 
 pub export var memmap_request: limine.memmap_request linksection(".limine_requests") = .{
     .id = [4]u64{ LIMINE_MAGIC1, LIMINE_MAGIC2, 0x67cf3d9d378a806f, 0xe304acdfc50c3c62 },
+    .revision = 0,
+};
+
+pub export var hhdm_request: limine.hhdm_request linksection(".limine_requests") = .{
+    .id = [4]u64{ LIMINE_MAGIC1, LIMINE_MAGIC2, 0x48dcf1cb8ad2b852, 0x63984e959a98244b },
     .revision = 0,
 };
 
@@ -67,6 +72,18 @@ export fn _start() noreturn {
     klib.gdt.init();
     klib.idt.init();
 
+    var hhdm_is_enabled = true;
+
+    if (hhdm_request.response == null) {
+        std.log.warn("HHDM is not enabled!", .{});
+        hhdm_is_enabled = false;
+    }
+
+    if (hhdm_is_enabled) {
+        const response = hhdm_request.response;
+        klib.PMO = response.*.offset;
+    }
+
     if (memmap_request.response == null) {
         @panic("Failed to get memory map!");
     }
@@ -78,6 +95,8 @@ export fn _start() noreturn {
     for (0..response.*.entry_count) |i| {
         const entry = response.*.entries[i];
 
+        std.log.info("Entry {}: base={x}, len={x}, type={d}", .{ i, entry.*.base, entry.*.length, entry.*.type });
+
         if (entry.*.type == limine.MEMMAP_USABLE) {
             usable_base = entry.*.base;
             usable_length = entry.*.length;
@@ -85,26 +104,16 @@ export fn _start() noreturn {
     }
 
     if (usable_base == 0 or usable_length == 0) @panic("Failed to find usable memory!");
-    var frame_alloc = klib.mem.FrameAllocator.init();
+    var frame_alloc = klib.mem.FrameAllocator.init(klib.PMO);
     const interface = &frame_alloc;
 
     interface.setbootinfo(usable_base, usable_length);
 
-    const test_va = klib.mem.VirtualAddress.from(0xffff_8000_0000_0000);
-    const test_frame = interface.alloc(0) orelse @panic("OOM allocating test frame");
+    klib.vmm.init(interface);
+    const thing: *u8 = @ptrCast(klib.vmm.kalloc_pages(1));
+    thing.* = 'a';
 
-    klib.mem.kmap(test_va, test_frame, .{}, interface);
-
-    const lmao: *u8 = @ptrFromInt(test_va.to());
-
-    std.log.info("I SURVIVED!", .{});
-
-    lmao.* = 'c';
-
-    std.log.info("NO WAY: {c}", .{lmao.*});
-
-    const ptr: *volatile u64 = @ptrFromInt(0xffff_8000_0000_0000);
-    ptr.* = 'a';
+    std.log.info("YAY!", .{});
 
     klib.utils.hcf();
 }

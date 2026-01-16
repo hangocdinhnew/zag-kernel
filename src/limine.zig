@@ -18,3 +18,6 @@ pub const memmap_entry = limine.limine_memmap_entry;
 pub const framebuffer_request = limine.limine_framebuffer_request;
 pub const framebuffer_response = limine.limine_framebuffer_response;
 pub const framebuffer = limine.limine_framebuffer;
+
+pub const hhdm_request = limine.limine_hhdm_request;
+pub const hhdm_response = limine.limine_hhdm_response;

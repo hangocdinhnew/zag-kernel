@@ -1,3 +1,8 @@
+pub export var PMO: usize = 0xFFFF_8000_0000_0000;
+
+pub const KERNEL_HEAP_START = 0xFFFF_C000_0000_0000;
+pub const KERNEL_HEAP_END = 0xFFFF_E000_0000_0000;
+
 pub const std = @import("std");
 
 pub const utils = @import("utils.zig");
@@ -6,6 +11,7 @@ pub const mem = @import("mem.zig");
 pub const smp = @import("smp.zig");
 pub const gdt = @import("gdt.zig");
 pub const idt = @import("idt.zig");
+pub const vmm = @import("vmm.zig");
 
 pub const UARTSpeed = uart.Speed;
 pub const kprint = uart.kprint;

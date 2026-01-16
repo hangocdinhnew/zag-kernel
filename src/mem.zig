@@ -3,8 +3,6 @@ const root = @import("root").klib;
 
 const smp = root.smp;
 
-pub const PMO: usize = 0xFFFF_8000_0000_0000;
-
 pub const PageTable = [512]PageTableEntry;
 pub const PageTableEntry = packed struct(usize) {
     present: bool = false,
@@ -98,12 +96,15 @@ inline fn largestOrderThatFits(addr: usize, end: usize) usize {
 }
 
 pub const FrameAllocator = struct {
+    spinlock: root.smp.Spinlock = .{},
     free_lists: [MAX_ORDER + 1]?*FreeBlock,
-    spin_lock: smp.Spinlock = .{},
+    offset: usize,
+    length: usize = 0,
 
-    pub fn init() @This() {
+    pub fn init(offset: usize) @This() {
         return .{
             .free_lists = [_]?*FreeBlock{null} ** (MAX_ORDER + 1),
+            .offset = offset,
         };
     }
 
@@ -116,11 +117,13 @@ pub const FrameAllocator = struct {
             self.free(PhysFrame.from(start), order);
             start += bytes(order);
         }
+
+        self.length = alignDown(base + length, PAGE_SIZE);
     }
 
     pub fn alloc(self: *@This(), order: usize) ?PhysFrame {
-        self.spin_lock.lock();
-        defer self.spin_lock.unlock();
+        self.spinlock.lock();
+        defer self.spinlock.unlock();
 
         var o = order;
 
@@ -133,12 +136,12 @@ pub const FrameAllocator = struct {
         const block = self.free_lists[o].?;
         self.free_lists[o] = block.next;
 
-        const addr = @intFromPtr(block) - PMO;
+        const addr = @intFromPtr(block) - self.offset;
 
         while (o > order) {
             o -= 1;
             const buddy_addr = addr + bytes(o);
-            const buddy: *FreeBlock = @ptrFromInt(buddy_addr + PMO);
+            const buddy: *FreeBlock = @ptrFromInt(buddy_addr + self.offset);
 
             buddy.next = self.free_lists[o];
             self.free_lists[o] = buddy;
@@ -152,8 +155,8 @@ pub const FrameAllocator = struct {
         addr: PhysFrame,
         order: usize,
     ) void {
-        self.spin_lock.lock();
-        defer self.spin_lock.unlock();
+        self.spinlock.lock();
+        defer self.spinlock.unlock();
 
         std.debug.assert(order <= MAX_ORDER);
         std.debug.assert(addr.to() % bytes(order) == 0);
@@ -167,8 +170,8 @@ pub const FrameAllocator = struct {
             var prev: ?*FreeBlock = null;
             var node = self.free_lists[current_order];
 
-            while (node) |blk| {
-                const blk_phys = @intFromPtr(blk) - PMO;
+            blk: while (node) |blk| {
+                const blk_phys = @intFromPtr(blk) - self.offset;
                 if (blk_phys == buddy_addr) {
                     if (prev) |p| {
                         p.next = blk.next;
@@ -178,7 +181,7 @@ pub const FrameAllocator = struct {
 
                     current_addr = @min(current_addr, buddy_addr);
                     current_order += 1;
-                    continue;
+                    continue :blk;
                 }
 
                 prev = node;
@@ -188,67 +191,8 @@ pub const FrameAllocator = struct {
             break;
         }
 
-        const block: *FreeBlock = @ptrFromInt(current_addr + PMO);
+        const block: *FreeBlock = @ptrFromInt(current_addr + self.offset);
         block.next = self.free_lists[current_order];
         self.free_lists[current_order] = block;
     }
 };
-
-pub inline fn get_pml4() *PageTable {
-    const cr3 = asm volatile (
-        \\mov %cr3, %[ret]
-        : [ret] "=r" (-> usize),
-        :
-        : .{ .memory = true });
-
-    return @ptrFromInt(cr3 + PMO);
-}
-
-pub inline fn log_info_location(comptime fmt: []const u8, args: anytype) void {
-    const src = @src();
-
-    std.log.info("{s}:{}:{}: " ++ fmt, .{ src.file, src.line, src.column } ++ args);
-}
-
-pub inline fn alloc_page(root_table_entry: *PageTableEntry, allocator: *FrameAllocator) *PageTable {
-    var table: *PageTable = undefined;
-
-    if (!root_table_entry.present) {
-        const new_frame = allocator.alloc(0) orelse @panic("OOPM while allocating page table!");
-        table = @ptrFromInt(new_frame.to() + PMO);
-        @memset(&table.*, .{});
-        root_table_entry.frame = @intCast(new_frame.addr);
-        root_table_entry.present = true;
-        root_table_entry.rw = true;
-    } else {
-        table = @ptrFromInt((root_table_entry.frame << 12) + PMO);
-    }
-
-    return table;
-}
-
-pub fn kmap(addr: VirtualAddress, frame: PhysFrame, _: PageTableEntry, allocator: *FrameAllocator) void {
-    var pml4 = get_pml4();
-
-    const pml4e = &pml4[addr.pml4_index];
-    var pdpt: *PageTable = alloc_page(pml4e, allocator);
-
-    const pdpte = &pdpt[addr.pdpt_index];
-    var pd: *PageTable = alloc_page(pdpte, allocator);
-
-    const pde = &pd[addr.pd_index];
-    var pt: *PageTable = alloc_page(pde, allocator);
-
-    var pte = &pt[addr.pt_index];
-    pte.frame = @intCast(frame.addr);
-    pte.present = true;
-    pte.rw = true;
-    pte.user = false;
-    pte.nx = false;
-
-    asm volatile (
-        \\invlpg (%rax)
-        :
-        : [addr] "{rax}" (addr.to()),
-        : .{ .memory = true });
-}

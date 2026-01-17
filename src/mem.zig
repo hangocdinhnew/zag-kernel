@@ -3,23 +3,6 @@ const root = @import("root").klib;
 
 const smp = root.smp;
 
-pub const PageTable = [512]PageTableEntry;
-pub const PageTableEntry = packed struct(usize) {
-    present: bool = false,
-    rw: bool = false,
-    user: bool = false,
-    write_through: bool = false,
-    cache_disable: bool = false,
-    accessed: bool = false,
-    dirty: bool = false,
-    pat: bool = false,
-    global: bool = false,
-    available: u3 = 0,
-    frame: u40 = 0,
-    reserved: u11 = 0,
-    nx: bool = false,
-};
-
 pub const FRAME_SIZE: usize = 4096;
 
 pub const PhysFrame = packed struct(usize) {
@@ -27,12 +10,12 @@ pub const PhysFrame = packed struct(usize) {
 
     pub fn from(physaddr: usize) @This() {
         return .{
-            .addr = physaddr >> 12,
+            .addr = physaddr >> PAGE_SHIFT,
         };
     }
 
     pub fn to(self: @This()) usize {
-        return self.addr << 12;
+        return self.addr << PAGE_SHIFT;
     }
 };
 
@@ -73,11 +56,11 @@ inline fn buddyOf(addr: usize, order: usize) usize {
     return addr ^ bytes(order);
 }
 
-inline fn alignUp(x: usize, a: usize) usize {
+pub inline fn alignUp(x: usize, a: usize) usize {
     return (x + a - 1) & ~(a - 1);
 }
 
-inline fn alignDown(x: usize, a: usize) usize {
+pub inline fn alignDown(x: usize, a: usize) usize {
     return x & ~(a - 1);
 }
 
@@ -99,7 +82,8 @@ pub const FrameAllocator = struct {
     spinlock: root.smp.Spinlock = .{},
     free_lists: [MAX_ORDER + 1]?*FreeBlock,
     offset: usize,
-    length: usize = 0,
+    base: usize = 0,
+    end: usize = 0,
 
     pub fn init(offset: usize) @This() {
         return .{
@@ -118,7 +102,8 @@ pub const FrameAllocator = struct {
             start += bytes(order);
         }
 
-        self.length = alignDown(base + length, PAGE_SIZE);
+        self.base = base;
+        self.end = alignDown(base + length, PAGE_SIZE);
     }
 
     pub fn alloc(self: *@This(), order: usize) ?PhysFrame {

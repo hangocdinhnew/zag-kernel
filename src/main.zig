@@ -110,10 +110,13 @@ export fn _start() noreturn {
     interface.setbootinfo(usable_base, usable_length);
 
     klib.vmm.init(interface);
-    const thing: *u8 = @ptrCast(klib.vmm.kalloc_pages(1));
+    const allocator = klib.allocator.page_allocator;
+    const thing = allocator.create(u8) catch @panic("Failed to allocate!");
     thing.* = 'a';
 
-    std.log.info("YAY!", .{});
+    std.log.info("YAY: {c}", .{thing.*});
+
+    allocator.destroy(thing);
 
     klib.utils.hcf();
 }

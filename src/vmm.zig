@@ -1,7 +1,8 @@
-const root = @import("root").klib;
 const std = @import("std");
+const root = @import("root").klib;
 
 pub const PageTable = [512]PageTableEntry;
+
 pub const PageTableEntry = packed struct(usize) {
     present: bool = false,
     rw: bool = false,
@@ -26,37 +27,26 @@ pub const VmFlags = packed struct(u8) {
     _padding: u4 = 0,
 };
 
-pub const VmRegion = struct {
-    start: usize,
-    size: usize,
-    flags: VmFlags,
-    next: ?*VmRegion = null,
-};
-
 var kernel_pml4: *PageTable = undefined;
-var frame_alloc: *root.mem.FrameAllocator = undefined;
+pub var frame_alloc: *root.mem.FrameAllocator = undefined;
 
-var region_head: ?*VmRegion = null;
-
-var vmm_lock = root.smp.Spinlock{};
-
-inline fn physToVirt(phys: usize) usize {
+pub inline fn physToVirt(phys: usize) usize {
     return phys + root.PMO;
 }
 
-inline fn virtToPhys(virt: usize) usize {
+pub inline fn virtToPhys(virt: usize) usize {
     return virt - root.PMO;
 }
 
-inline fn flush_tlb(addr: usize) void {
+pub inline fn flush_page(virt: usize) void {
     asm volatile (
         \\invlpg (%rax)
         :
-        : [addr] "{rax}" (addr),
+        : [addr] "{rax}" (virt),
         : .{ .memory = true });
 }
 
-inline fn flush_tlb_all() void {
+pub inline fn flush_all() void {
     asm volatile (
         \\mov %cr3, %rax
         \\mov %rax, %cr3
@@ -73,53 +63,13 @@ noinline fn getPML4() *PageTable {
     return @ptrFromInt(physToVirt(cr3));
 }
 
-fn findFreeRegion(size: usize) usize {
-    var addr: usize = root.KERNEL_HEAP_START;
-
-    var node = region_head;
-    while (node) |r| {
-        if (addr + size <= r.start) {
-            return addr;
-        }
-        addr = r.start + r.size;
-        node = r.next;
-    }
-
-    return addr;
-}
-
-pub fn findRegionByAddr(addr: usize) ?*VmRegion {
-    var node = region_head;
-    while (node) |r| {
-        if (r.start == addr)
-            return r;
-        node = r.next;
-    }
-    return null;
-}
-
-fn insertRegion(region: *VmRegion) void {
-    if (region_head == null or region.start < region_head.?.start) {
-        region.next = region_head;
-        region_head = region;
-        return;
-    }
-
-    var cur = region_head.?;
-    while (cur.next) |n| {
-        if (region.start < n.start) break;
-        cur = n;
-    }
-
-    region.next = cur.next;
-    cur.next = region;
-}
-
 fn allocTable(parent: *PageTableEntry) *PageTable {
     if (!parent.present) {
-        const frame = frame_alloc.alloc(0) orelse @panic("OOM while allocating page table");
+        const frame = frame_alloc.alloc(0) orelse @panic("vmm: OOM allocating page table");
 
-        const table: *PageTable = @ptrFromInt(physToVirt(frame.to()));
+        const table: *PageTable =
+            @ptrFromInt(physToVirt(frame.to()));
+
         @memset(table, .{});
 
         parent.frame = @intCast(frame.addr);
@@ -128,57 +78,128 @@ fn allocTable(parent: *PageTableEntry) *PageTable {
         parent.user = false;
     }
 
-    return @ptrFromInt(physToVirt(parent.frame << root.mem.PAGE_SHIFT));
+    return @ptrFromInt(
+        physToVirt(parent.frame << root.mem.PAGE_SHIFT),
+    );
 }
 
-// DOESN'T FLUSH TLB FOR YOU
-fn mapPage(virt: usize, phys: usize, flags: PageTableEntry) void {
-    const addr: root.mem.VirtualAddress = @bitCast(virt);
+pub fn map_page(
+    virt: usize,
+    phys: usize,
+    flags: VmFlags,
+) void {
+    const va: root.mem.VirtualAddress = .from(virt);
 
     const pml4 = kernel_pml4;
-    const pdpt = allocTable(&pml4[addr.pml4_index]);
-    const pd = allocTable(&pdpt[addr.pdpt_index]);
-    const pt = allocTable(&pd[addr.pd_index]);
+    const pdpt = allocTable(&pml4[va.pml4_index]);
+    const pd = allocTable(&pdpt[va.pdpt_index]);
+    const pt = allocTable(&pd[va.pd_index]);
 
-    var pte = &pt[addr.pt_index];
-    pte.* = flags;
-    pte.frame = @intCast(phys >> root.mem.PAGE_SHIFT);
+    var pte = &pt[va.pt_index];
+    pte.* = .{};
     pte.present = true;
+    pte.rw = flags.rw;
+    pte.user = flags.user;
+    pte.nx = flags.nx;
+    pte.global = flags.global;
+    pte.frame = @intCast(phys >> root.mem.PAGE_SHIFT);
 }
 
-fn unmapPage(virt: usize) void {
-    const addr: root.mem.VirtualAddress = @bitCast(virt);
+pub fn unmap_page(virt: usize) ?usize {
+    const va: root.mem.VirtualAddress = .from(virt);
 
-    const pml4 = kernel_pml4;
-    const pml4e = &pml4[addr.pml4_index];
+    const pml4e = &kernel_pml4[va.pml4_index];
+    if (!pml4e.present) return null;
+
+    const pdpt: *PageTable =
+        @ptrFromInt(physToVirt(pml4e.frame << root.mem.PAGE_SHIFT));
+    const pdpte = &pdpt[va.pdpt_index];
+    if (!pdpte.present) return null;
+
+    const pd: *PageTable =
+        @ptrFromInt(physToVirt(pdpte.frame << root.mem.PAGE_SHIFT));
+    const pde = &pd[va.pd_index];
+    if (!pde.present) return null;
+
+    const pt: *PageTable =
+        @ptrFromInt(physToVirt(pde.frame << root.mem.PAGE_SHIFT));
+    const pte = &pt[va.pt_index];
+    if (!pte.present) return null;
+
+    const phys =
+        pte.frame << root.mem.PAGE_SHIFT;
+
+    pte.* = .{};
+    return phys;
+}
+
+pub fn map_range(
+    virt: usize,
+    phys: usize,
+    pages: usize,
+    flags: VmFlags,
+) void {
+    var i: usize = 0;
+    while (i < pages) : (i += 1) {
+        map_page(
+            virt + i * root.mem.PAGE_SIZE,
+            phys + i * root.mem.PAGE_SIZE,
+            flags,
+        );
+    }
+}
+
+pub fn unmap_range(
+    virt: usize,
+    pages: usize,
+) void {
+    var i: usize = 0;
+    while (i < pages) : (i += 1) {
+        _ = unmap_page(
+            virt + i * root.mem.PAGE_SIZE,
+        );
+    }
+}
+
+pub fn protect_page(
+    virt: usize,
+    flags: VmFlags,
+) void {
+    const va: root.mem.VirtualAddress = @bitCast(virt);
+
+    const pml4e = &kernel_pml4[va.pml4_index];
     if (!pml4e.present) return;
 
-    const pdpt: *PageTable = @ptrFromInt(physToVirt(pml4e.frame << root.mem.PAGE_SHIFT));
-    const pdpte = &pdpt[addr.pdpt_index];
+    const pdpt: *PageTable =
+        @ptrFromInt(physToVirt(pml4e.frame << root.mem.PAGE_SHIFT));
+    const pdpte = &pdpt[va.pdpt_index];
     if (!pdpte.present) return;
 
-    const pd: *PageTable = @ptrFromInt(physToVirt(pdpte.frame << root.mem.PAGE_SHIFT));
-    const pde = &pd[addr.pd_index];
+    const pd: *PageTable =
+        @ptrFromInt(physToVirt(pdpte.frame << root.mem.PAGE_SHIFT));
+    const pde = &pd[va.pd_index];
     if (!pde.present) return;
 
-    const pt: *PageTable = @ptrFromInt(physToVirt(pde.frame << root.mem.PAGE_SHIFT));
-    const pte = &pt[addr.pt_index];
+    const pt: *PageTable =
+        @ptrFromInt(physToVirt(pde.frame << root.mem.PAGE_SHIFT));
+    const pte = &pt[va.pt_index];
     if (!pte.present) return;
 
-    const phys = pte.frame << root.mem.PAGE_SHIFT;
-    pte.* = .{};
-
-    frame_alloc.free(root.mem.PhysFrame.from(phys), 0);
+    pte.rw = flags.rw;
+    pte.user = flags.user;
+    pte.nx = flags.nx;
+    pte.global = flags.global;
 }
 
-pub fn init(allocator: *root.mem.FrameAllocator) void {
+pub fn init(
+    allocator: *root.mem.FrameAllocator,
+) void {
     frame_alloc = allocator;
-
     kernel_pml4 = getPML4();
 
     var phys: usize = frame_alloc.base;
     while (phys < frame_alloc.end) : (phys += root.mem.PAGE_SIZE) {
-        mapPage(
+        map_page(
             physToVirt(phys),
             phys,
             .{
@@ -189,133 +210,5 @@ pub fn init(allocator: *root.mem.FrameAllocator) void {
         );
     }
 
-    flush_tlb_all();
-}
-
-pub fn kalloc_pages(count: usize) ?*anyopaque {
-    vmm_lock.lock();
-    defer vmm_lock.unlock();
-
-    const size = count * root.mem.PAGE_SIZE;
-    const base = findFreeRegion(size);
-
-    const region: *VmRegion = @ptrFromInt(physToVirt((frame_alloc.alloc(0) orelse {
-        std.log.err("kalloc_pages: OOM", .{});
-        return null;
-    }).to()));
-
-    region.* = .{
-        .start = base,
-        .size = size,
-        .flags = .{},
-        .next = null,
-    };
-
-    insertRegion(region);
-
-    var i: usize = 0;
-    while (i < count) : (i += 1) {
-        const frame = frame_alloc.alloc(0) orelse {
-            std.log.err("kalloc_pages: OOM", .{});
-            return null;
-        };
-        const vaddr = base + i * root.mem.PAGE_SIZE;
-
-        mapPage(
-            vaddr,
-            frame.to(),
-            .{
-                .rw = true,
-                .global = true,
-                .nx = true,
-            },
-        );
-
-        @memset(@as(*[root.mem.PAGE_SIZE]u8, @ptrFromInt(vaddr)), 0);
-        flush_tlb(vaddr);
-    }
-
-    return @ptrFromInt(base);
-}
-
-pub fn kfree_pages(ptr: *anyopaque) void {
-    vmm_lock.lock();
-    defer vmm_lock.unlock();
-
-    const addr = @intFromPtr(ptr);
-
-    var prev: ?*VmRegion = null;
-    var cur = region_head;
-
-    while (cur) |r| {
-        if (r.start == addr) {
-            const pages = r.size / root.mem.PAGE_SIZE;
-
-            var i: usize = 0;
-            while (i < pages) : (i += 1) {
-                unmapPage(addr + i * root.mem.PAGE_SIZE);
-                flush_tlb(addr + i * root.mem.PAGE_SIZE);
-            }
-
-            if (prev) |p| {
-                p.next = r.next;
-            } else {
-                region_head = r.next;
-            }
-
-            return;
-        }
-
-        prev = cur;
-        cur = r.next;
-    }
-
-    @panic("kfree_pages: invalid pointer");
-}
-
-pub fn realloc(
-    uncasted_memory: []u8,
-    new_len: usize,
-    may_move: bool,
-) ?[*]u8 {
-    vmm_lock.lock();
-    defer vmm_lock.unlock();
-
-    const ptr = uncasted_memory.ptr;
-    const addr = @intFromPtr(ptr);
-
-    const region = findRegionByAddr(addr) orelse @panic("Failed to find region by address");
-
-    const page_size = root.mem.PAGE_SIZE;
-
-    const old_pages = region.size / page_size;
-    const new_pages = root.mem.alignUp(new_len, page_size) / page_size;
-
-    if (old_pages == new_pages)
-        return ptr;
-
-    if (new_pages < old_pages) {
-        var i = new_pages;
-        while (i < old_pages) : (i += 1) {
-            const vaddr = addr + i * page_size;
-            unmapPage(vaddr);
-            flush_tlb(vaddr);
-        }
-
-        region.size = new_pages * page_size;
-        return ptr;
-    }
-
-    if (!may_move)
-        return null;
-
-    const new_ptr = kalloc_pages(new_pages);
-
-    @memcpy(
-        @as([*]u8, @ptrCast(new_ptr))[0..uncasted_memory.len],
-        uncasted_memory,
-    );
-
-    kfree_pages(ptr);
-    return @ptrCast(new_ptr);
+    flush_all();
 }

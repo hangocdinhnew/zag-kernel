@@ -24,24 +24,16 @@ inline fn irqRestore(flags: usize) void {
 pub const Spinlock = struct {
     locked: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
 
-    pub fn lock(self: *@This()) void {
-        while (true) : (std.atomic.spinLoopHint()) {
-            if (self.locked.cmpxchgWeak(0, 1, .acquire, .monotonic) == null) break;
-        }
-    }
-
-    pub fn unlock(self: *@This()) void {
-        self.locked.store(0, .release);
-    }
-
-    pub fn lock_irqsave(self: *@This()) usize {
+    pub fn lock(self: *@This()) usize {
         const flags = irqDisable();
-        self.lock();
+        while (true) : (std.atomic.spinLoopHint()) {
+            if (self.locked.cmpxchgStrong(0, 1, .acquire, .monotonic) == null) break;
+        }
         return flags;
     }
 
-    pub fn unlock_irqrestore(self: *@This(), flags: usize) void {
-        self.unlock();
+    pub fn unlock(self: *@This(), flags: usize) void {
+        self.locked.store(0, .release);
         irqRestore(flags);
     }
 };

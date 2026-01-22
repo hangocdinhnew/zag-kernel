@@ -88,28 +88,24 @@ export fn _start() noreturn {
         @panic("Failed to get memory map!");
     }
 
-    var usable_base: u64 = 0;
-    var usable_length: u64 = 0;
+    var frame_alloc = klib.mem.FrameAllocator.init(klib.PMO);
 
     const response = memmap_request.response;
+
     for (0..response.*.entry_count) |i| {
-        const entry = response.*.entries[i];
+        const entry = response.*.entries[i].*;
 
-        std.log.info("Entry {}: base={x}, len={x}, type={d}", .{ i, entry.*.base, entry.*.length, entry.*.type });
+        std.log.info(
+            "Memmap {}: base={x}, len={x}, type={d}",
+            .{ i, entry.base, entry.length, entry.type },
+        );
 
-        if (entry.*.type == limine.MEMMAP_USABLE) {
-            usable_base = entry.*.base;
-            usable_length = entry.*.length;
+        if (entry.type == limine.MEMMAP_USABLE) {
+            frame_alloc.add_region(entry.base, entry.length);
         }
     }
 
-    if (usable_base == 0 or usable_length == 0) @panic("Failed to find usable memory!");
-    var frame_alloc = klib.mem.FrameAllocator.init(klib.PMO);
-    const interface = &frame_alloc;
-
-    interface.setbootinfo(usable_base, usable_length);
-
-    klib.vmm.init(interface);
+    klib.vmm.init(&frame_alloc);
     const allocator = klib.allocator.page_allocator;
     const thing = allocator.create(u8) catch @panic("Failed to allocate!");
     thing.* = 'a';

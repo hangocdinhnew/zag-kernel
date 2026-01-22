@@ -30,6 +30,8 @@ pub const VmFlags = packed struct(u8) {
 var kernel_pml4: *PageTable = undefined;
 pub var frame_alloc: *root.mem.FrameAllocator = undefined;
 
+var vmm_lock: root.smp.Spinlock = .{};
+
 pub inline fn physToVirt(phys: usize) usize {
     return phys + root.PMO;
 }
@@ -38,7 +40,7 @@ pub inline fn virtToPhys(virt: usize) usize {
     return virt - root.PMO;
 }
 
-pub inline fn flush_page(virt: usize) void {
+pub inline fn flush_local_page(virt: usize) void {
     asm volatile (
         \\invlpg (%rax)
         :
@@ -46,7 +48,7 @@ pub inline fn flush_page(virt: usize) void {
         : .{ .memory = true });
 }
 
-pub inline fn flush_all() void {
+pub inline fn flush_local_all() void {
     asm volatile (
         \\mov %cr3, %rax
         \\mov %rax, %cr3
@@ -106,6 +108,9 @@ pub fn map_page(
 }
 
 pub fn unmap_page(virt: usize) ?usize {
+    const flags = vmm_lock.lock();
+    defer vmm_lock.unlock(flags);
+
     const va: root.mem.VirtualAddress = .from(virt);
 
     const pml4e = &kernel_pml4[va.pml4_index];
@@ -165,6 +170,9 @@ pub fn protect_page(
     virt: usize,
     flags: VmFlags,
 ) void {
+    vmm_lock.lock();
+    defer vmm_lock.unlock();
+
     const va: root.mem.VirtualAddress = @bitCast(virt);
 
     const pml4e = &kernel_pml4[va.pml4_index];
@@ -197,18 +205,5 @@ pub fn init(
     frame_alloc = allocator;
     kernel_pml4 = getPML4();
 
-    var phys: usize = frame_alloc.base;
-    while (phys < frame_alloc.end) : (phys += root.mem.PAGE_SIZE) {
-        map_page(
-            physToVirt(phys),
-            phys,
-            .{
-                .rw = true,
-                .global = true,
-                .nx = true,
-            },
-        );
-    }
-
-    flush_all();
+    flush_local_all();
 }

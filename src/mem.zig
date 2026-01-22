@@ -42,6 +42,7 @@ pub const MAX_ORDER = 10;
 
 const FreeBlock = struct {
     next: ?*FreeBlock,
+    order: u8,
 };
 
 inline fn pages(order: usize) usize {
@@ -82,8 +83,8 @@ pub const FrameAllocator = struct {
     spinlock: root.smp.Spinlock = .{},
     free_lists: [MAX_ORDER + 1]?*FreeBlock,
     offset: usize,
-    base: usize = 0,
-    end: usize = 0,
+
+    total_pages: usize = 0,
 
     pub fn init(offset: usize) @This() {
         return .{
@@ -92,23 +93,27 @@ pub const FrameAllocator = struct {
         };
     }
 
-    pub fn setbootinfo(self: *@This(), base: usize, length: usize) void {
+    pub fn add_region(self: *@This(), base: usize, length: usize) void {
         var start = alignUp(base, PAGE_SIZE);
         const end = alignDown(base + length, PAGE_SIZE);
 
+        if (start >= end) return;
+
+        const region_pages = (end - start) / PAGE_SIZE;
+
         while (start < end) {
             const order = largestOrderThatFits(start, end);
-            self.free(PhysFrame.from(start), order);
+
+            self.freeInternal(PhysFrame.from(start), order);
             start += bytes(order);
         }
 
-        self.base = base;
-        self.end = alignDown(base + length, PAGE_SIZE);
+        self.total_pages += region_pages;
     }
 
     pub fn alloc(self: *@This(), order: usize) ?PhysFrame {
-        self.spinlock.lock();
-        defer self.spinlock.unlock();
+        const flags = self.spinlock.lock();
+        defer self.spinlock.unlock(flags);
 
         var o = order;
 
@@ -121,6 +126,9 @@ pub const FrameAllocator = struct {
         const block = self.free_lists[o].?;
         self.free_lists[o] = block.next;
 
+        std.debug.assert(block.order == o);
+        block.order = 0xFF;
+
         const addr = @intFromPtr(block) - self.offset;
 
         while (o > order) {
@@ -129,34 +137,27 @@ pub const FrameAllocator = struct {
             const buddy: *FreeBlock = @ptrFromInt(buddy_addr + self.offset);
 
             buddy.next = self.free_lists[o];
+            buddy.order = @intCast(o);
             self.free_lists[o] = buddy;
         }
 
         return PhysFrame.from(addr);
     }
 
-    pub fn free(
-        self: *@This(),
-        addr: PhysFrame,
-        order: usize,
-    ) void {
-        self.spinlock.lock();
-        defer self.spinlock.unlock();
-
-        std.debug.assert(order <= MAX_ORDER);
-        std.debug.assert(addr.to() % bytes(order) == 0);
-
+    inline fn NOLOCK_freeInternal(self: *@This(), addr: PhysFrame, order: usize) void {
         var current_addr = addr.to();
         var current_order = order;
 
-        while (current_order < MAX_ORDER) {
+        merge: while (current_order < MAX_ORDER) {
             const buddy_addr = buddyOf(current_addr, current_order);
 
             var prev: ?*FreeBlock = null;
             var node = self.free_lists[current_order];
 
-            blk: while (node) |blk| {
+            while (node) |blk| {
                 const blk_phys = @intFromPtr(blk) - self.offset;
+                std.debug.assert(blk.order == current_order);
+
                 if (blk_phys == buddy_addr) {
                     if (prev) |p| {
                         p.next = blk.next;
@@ -166,7 +167,7 @@ pub const FrameAllocator = struct {
 
                     current_addr = @min(current_addr, buddy_addr);
                     current_order += 1;
-                    continue :blk;
+                    continue :merge;
                 }
 
                 prev = node;
@@ -177,7 +178,34 @@ pub const FrameAllocator = struct {
         }
 
         const block: *FreeBlock = @ptrFromInt(current_addr + self.offset);
+        block.order = @intCast(current_order);
         block.next = self.free_lists[current_order];
         self.free_lists[current_order] = block;
+    }
+
+    fn freeInternal(self: *@This(), addr: PhysFrame, order: usize) void {
+        const flags = self.spinlock.lock();
+        defer self.spinlock.unlock(flags);
+
+        NOLOCK_freeInternal(self, addr, order);
+    }
+
+    pub fn free(
+        self: *@This(),
+        addr: PhysFrame,
+        order: usize,
+    ) void {
+        const flags = self.spinlock.lock();
+        defer self.spinlock.unlock(flags);
+
+        std.debug.assert(order <= MAX_ORDER);
+        std.debug.assert(addr.to() % bytes(order) == 0);
+
+        const block_ptr: *FreeBlock =
+            @ptrFromInt(addr.to() + self.offset);
+
+        std.debug.assert(block_ptr.order == 0xFF);
+
+        NOLOCK_freeInternal(self, addr, order);
     }
 };

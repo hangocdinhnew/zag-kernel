@@ -12,14 +12,16 @@ var uart_writer = &uart__writer.interface;
 
 pub var base: usize = 0x0;
 
+export var __uart_mutex_flags: usize = 0;
+
 fn lockUartWriter() *std.Io.Writer {
-    uart_mutex.lock();
+    __uart_mutex_flags = uart_mutex.lock();
     return uart_writer;
 }
 
 fn unlockUartWriter() void {
     uart_writer.end = 0;
-    uart_mutex.unlock();
+    uart_mutex.unlock(__uart_mutex_flags);
 }
 
 pub inline fn kprint(comptime fmt: []const u8, args: anytype) void {

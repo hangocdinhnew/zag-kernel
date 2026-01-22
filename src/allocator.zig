@@ -88,8 +88,8 @@ pub fn map(n: usize, alignment: std.mem.Alignment) ?[*]u8 {
     const pages =
         root.mem.alignUp(n, page_size) / page_size;
 
-    alloc_lock.lock();
-    defer alloc_lock.unlock();
+    const flags = alloc_lock.lock();
+    defer alloc_lock.unlock(flags);
 
     const base = find_free_range(pages);
 
@@ -129,13 +129,13 @@ pub fn map(n: usize, alignment: std.mem.Alignment) ?[*]u8 {
         );
     }
 
-    root.vmm.flush_all();
+    root.vmm.flush_local_all();
     return @ptrFromInt(base);
 }
 
 pub fn unmap(memory: []align(root.mem.PAGE_SIZE) u8) void {
-    alloc_lock.lock();
-    defer alloc_lock.unlock();
+    const flags = alloc_lock.lock();
+    defer alloc_lock.unlock(flags);
 
     const addr = @intFromPtr(memory.ptr);
     const region = find_region(addr) orelse @panic("allocator: invalid free");
@@ -153,7 +153,7 @@ pub fn unmap(memory: []align(root.mem.PAGE_SIZE) u8) void {
 
     remove_region(region);
     //free_region(region);
-    root.vmm.flush_all();
+    root.vmm.flush_local_all();
 }
 
 fn realloc_internal(
@@ -185,7 +185,7 @@ fn realloc_internal(
         }
 
         region.pages = new_pages;
-        root.vmm.flush_all();
+        root.vmm.flush_local_all();
         return memory.ptr;
     }
 
@@ -226,8 +226,8 @@ fn resize(
     _ = alignment;
     _ = return_address;
 
-    alloc_lock.lock();
-    defer alloc_lock.unlock();
+    const flags = alloc_lock.lock();
+    defer alloc_lock.unlock(flags);
 
     return realloc_internal(memory, new_len, false) != null;
 }
@@ -243,8 +243,8 @@ fn remap(
     _ = alignment;
     _ = return_address;
 
-    alloc_lock.lock();
-    defer alloc_lock.unlock();
+    const flags = alloc_lock.lock();
+    defer alloc_lock.unlock(flags);
 
     return realloc_internal(memory, new_len, true);
 }

@@ -10,10 +10,10 @@ const ZagArch = enum {
     }
 };
 
-fn targetQuery(arch: ?std.Target.Cpu.Arch, os: ?std.Target.Os.Tag) std.Target.Query {
+fn targetQuery(arch: ?std.Target.Cpu.Arch) std.Target.Query {
     const query: std.Target.Query = .{
         .cpu_arch = arch,
-        .os_tag = os,
+        .os_tag = .freestanding,
         .abi = .none,
     };
 
@@ -23,7 +23,7 @@ fn targetQuery(arch: ?std.Target.Cpu.Arch, os: ?std.Target.Os.Tag) std.Target.Qu
 pub fn build(b: *std.Build) void {
     const arch = b.option(ZagArch, "arch", "The target architecture of Zag") orelse .x86_64;
 
-    const kernel_query = targetQuery(arch.toStd(), .freestanding);
+    const kernel_query = targetQuery(arch.toStd());
 
     const kernel_target = b.resolveTargetQuery(kernel_query);
     const optimize = b.standardOptimizeOption(.{});
@@ -40,13 +40,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const limine_module = b.createModule(.{
-        .root_source_file = b.path("src/limine.zig"),
+    const limine_cimport = b.addTranslateC(.{
+        .root_source_file = b.path("thirdparty/limine-protocol/include/limine.h"),
         .target = kernel_target,
         .optimize = optimize,
+        .link_libc = false,
     });
+    const limine_module = limine_cimport.createModule();
 
-    limine_module.addIncludePath(b.path("3rd/limine-protocol/include"));
     kernellib_module.addImport("limine", limine_module);
 
     kernel_module.addImport("klib", kernellib_module);

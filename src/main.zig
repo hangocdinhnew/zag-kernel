@@ -10,18 +10,22 @@ pub fn panic(_: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
 const LIMINE_COMMON_MAGIC1: usize = 0xc7b1dd30df4c8b88;
 const LIMINE_COMMON_MAGIC2: usize = 0x0a82e883a194f07b;
 
-pub export var start_marker: [4]u64 linksection(".limine_requests_start") = [4]u64{ 0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf, 0x785c6ed015d3e316, 0x181e920a7852b9d9 };
-pub export var end_marker: [2]u64 linksection(".limine_requests_end") = [2]u64{ 0xadc0e0531bb10d03, 0x9572709f31764c62 };
-pub export var base_revision: [3]u64 linksection(".limine_requests") = [3]u64{ 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 4 };
+pub export var base_revision: [3]u64 linksection(".limine_requests") = [3]u64{ 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 6 };
 
 pub export var hhdm_request: limine.limine_hhdm_request linksection(".limine_requests") = .{
     .id = [4]u64{ LIMINE_COMMON_MAGIC1, LIMINE_COMMON_MAGIC2, 0x48dcf1cb8ad2b852, 0x63984e959a98244b },
     .revision = 0,
 };
 
-export fn _start() noreturn {
-    klib.check_base_rev(base_revision);
+pub export var memmap_request: limine.limine_memmap_request linksection(".limine_requests") = .{
+    .id = [4]u64{ LIMINE_COMMON_MAGIC1, LIMINE_COMMON_MAGIC2, 0x67cf3d9d378a806f, 0xe304acdfc50c3c62 },
+    .revision = 0,
+};
 
+pub export var start_marker: [4]u64 linksection(".limine_requests_start") = [4]u64{ 0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf, 0x785c6ed015d3e316, 0x181e920a7852b9d9 };
+pub export var end_marker: [2]u64 linksection(".limine_requests_end") = [2]u64{ 0xadc0e0531bb10d03, 0x9572709f31764c62 };
+
+export fn _start() noreturn {
     if (builtin.cpu.arch == .x86_64) {
         klib.enable_sse();
         if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();

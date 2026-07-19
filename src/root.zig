@@ -30,7 +30,7 @@ pub inline fn enable_sse() void {
 
 pub inline fn enable_avx() void {
     asm volatile (
-        \\mov %cr4, %eax
+        \\mov %cr4, %rax
         \\or $0x200, %rax
         \\or $0x40000, %rax
         \\mov %rax, %cr4

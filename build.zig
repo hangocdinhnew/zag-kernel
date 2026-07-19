@@ -63,6 +63,7 @@ pub fn build(b: *std.Build) void {
     const kernel = b.addExecutable(.{
         .name = "zag-kernel",
         .root_module = kernel_module,
+        .use_llvm = true,
     });
 
     kernel.setLinkerScript(b.path(b.fmt("linker-{s}.lds", .{@tagName(arch)})));

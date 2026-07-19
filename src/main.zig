@@ -3,6 +3,10 @@ pub const builtin = @import("builtin");
 pub const std = @import("std");
 const limine = @import("limine");
 
+pub fn panic(msg: []const u8, _: ?*builtin.StackTrace, _: ?usize) noreturn {
+    klib.utils.hcf();
+}
+
 const LIMINE_COMMON_MAGIC1: usize = 0xc7b1dd30df4c8b88;
 const LIMINE_COMMON_MAGIC2: usize = 0x0a82e883a194f07b;
 

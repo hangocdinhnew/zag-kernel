@@ -3,7 +3,7 @@ pub const builtin = @import("builtin");
 pub const std = @import("std");
 const limine = @import("limine");
 
-pub fn panic(msg: []const u8, _: ?*builtin.StackTrace, _: ?usize) noreturn {
+pub fn panic(_: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     klib.utils.hcf();
 }
 
@@ -27,14 +27,7 @@ export fn _start() noreturn {
         if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
     }
 
-    var hhdm_is_enabled = true;
-
-    if (hhdm_request.response == null) {
-        hhdm_is_enabled = false;
-    }
-
-    if (hhdm_is_enabled) {
-        const response = hhdm_request.response;
+    if (hhdm_request.response) |response| {
         klib.hhdmBase = response.*.offset;
     }
 

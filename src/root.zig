@@ -1,7 +1,6 @@
-pub export var hhdmBase: usize = 0xFFFF_8000_0000_0000;
-
 pub const std = @import("std");
 pub const utils = @import("utils.zig");
+pub export var lmBase: usize = 0xFFFF_8000_0000_0000;
 
 pub inline fn check_base_rev(base_rev: [3]u64) void {
     if (base_rev[2] != 0)

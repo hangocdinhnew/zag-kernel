@@ -31,9 +31,11 @@ export fn _start() noreturn {
         if (builtin.cpu.has(.x86, .avx)) klib.enable_avx();
     }
 
+    klib.check_base_rev(base_revision);
+
     if (hhdm_request.response) |response| {
-        klib.hhdmBase = response.*.offset;
-    }
+        klib.lmBase = response.*.offset;
+    } else @panic("No linear mapping, cannot continue execution.");
 
     klib.utils.hcf();
 }

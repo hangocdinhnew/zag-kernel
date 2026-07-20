@@ -1,7 +1,7 @@
-/* Copied from https://github.com/Limine-Bootloader/limine-c-template-x86-64 */
+/* Copied from https://github.com/Limine-Bootloader/limine-c-template */
 /* This code is under the BSD Zero Clause License */
 
-OUTPUT_FORMAT(elf64-x86-64)
+OUTPUT_FORMAT(elf64-littleaarch64)
 
 ENTRY(_start)
 

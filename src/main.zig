@@ -37,51 +37,9 @@ export fn _start() noreturn {
         klib.lmBase = response.*.offset;
     } else @panic("No linear mapping, cannot continue execution.");
 
-    var usable_memory_size: usize = 0;
-    var suitable_region_base: usize = 0;
-    var metadata_size: usize = 0;
-
-    if (memmap_request.response) |response| {
-        const entry_count = response.*.entry_count;
-        for (0..entry_count) |i| {
-            const entry = response.*.entries[i];
-            const entry_length = entry.*.length;
-            const entry_type = entry.*.type;
-
-            if (entry_type != limine.LIMINE_MEMMAP_USABLE)
-                continue;
-
-            usable_memory_size +%= entry_length;
-        }
-
-        metadata_size = (usable_memory_size / klib.PAGE_SIZE) * @sizeOf(klib.Page);
-
-        if (usable_memory_size < metadata_size) @panic("OOM, cannot continue execution.");
-
-        for (0..entry_count) |i| {
-            const entry = response.*.entries[i];
-            const entry_base = entry.*.base;
-            const entry_length = entry.*.length;
-            const entry_type = entry.*.type;
-
-            if (entry_type != limine.LIMINE_MEMMAP_USABLE)
-                continue;
-
-            if (entry_length >= metadata_size) {
-                suitable_region_base = entry_base;
-                break;
-            }
-        }
-    } else @panic("No memory map, cannot continue execution.");
-
-    const metadata = @as([*]u8, @ptrFromInt(suitable_region_base + klib.lmBase))[0..metadata_size];
-    var metadata_fba = std.heap.FixedBufferAllocator.init(metadata);
-    const metadata_allocator = metadata_fba.allocator();
-
-    klib.page_metadata_array = metadata_allocator.alloc(
-        klib.Page,
-        usable_memory_size / klib.PAGE_SIZE,
-    ) catch @panic("OOM, cannot continue execution.");
+    const memmap_response = memmap_request.response orelse @panic("No memory map, cannot continue execution.");
+    var memsys: klib.MemSys = .{};
+    memsys.init(memmap_response);
 
     klib.utils.hcf();
 }
